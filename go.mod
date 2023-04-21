@@ -214,6 +214,6 @@ require (
 	k8s.io/api v0.17.0 // indirect
 	k8s.io/klog v1.0.0 // indirect
 	k8s.io/utils v0.0.0-20191114184206-e782cd3c129f // indirect
-	mellium.im/sasl v0.2.1 // indirect
+	mellium.im/sasl v0.3.1 // indirect
 	sigs.k8s.io/yaml v1.1.0 // indirect
 )
