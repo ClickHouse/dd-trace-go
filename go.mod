@@ -56,7 +56,7 @@ require (
 	github.com/segmentio/kafka-go v0.4.29
 	github.com/sirupsen/logrus v1.7.0
 	github.com/stretchr/testify v1.8.0
-	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
+	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
 	github.com/tidwall/buntdb v1.2.0
 	github.com/tinylib/msgp v1.1.6
 	github.com/twitchtv/twirp v8.1.1+incompatible
@@ -71,7 +71,7 @@ require (
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
 	golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
+	golang.org/x/xerrors v0.0.0-20220517211312-f3a8303e98df
 	google.golang.org/api v0.29.0
 	google.golang.org/grpc v1.32.0
 	google.golang.org/protobuf v1.28.0
@@ -171,9 +171,9 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
-	github.com/secure-systems-lab/go-securesystemslib v0.3.1 // indirect
+	github.com/secure-systems-lab/go-securesystemslib v0.4.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/theupdateframework/go-tuf v0.3.0 // indirect
+	github.com/theupdateframework/go-tuf v0.3.2 // indirect
 	github.com/tidwall/btree v1.1.0 // indirect
 	github.com/tidwall/gjson v1.12.1 // indirect
 	github.com/tidwall/grect v0.1.4 // indirect
