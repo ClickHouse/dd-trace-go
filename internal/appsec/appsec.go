@@ -11,11 +11,11 @@ package appsec
 import (
 	"sync"
 
-	rc "github.com/DataDog/datadog-agent/pkg/remoteconfig/state"
-
 	"gopkg.in/DataDog/dd-trace-go.v1/internal/appsec/dyngo"
 	"gopkg.in/DataDog/dd-trace-go.v1/internal/log"
 	"gopkg.in/DataDog/dd-trace-go.v1/internal/remoteconfig"
+
+	waf "github.com/DataDog/go-libddwaf"
 )
 
 // Enabled returns true when AppSec is up and running. Meaning that the appsec build tag is enabled, the env var
@@ -49,17 +49,21 @@ func Start(opts ...StartOption) {
 		opt(cfg)
 	}
 	appsec := newAppSec(cfg)
+	appsec.startRC()
 
+	// If the env var is not set ASM is disabled, but can be enabled through remote config
 	if !set {
-		// If the env var is not set AppSec is disabled but can be enabled through remote config
 		log.Debug("appsec: %s is not set. AppSec won't start until activated through remote configuration", enabledEnvVar)
+		if err := appsec.enableRemoteActivation(); err != nil {
+			// ASM is not enabled and can't be enabled through remote configuration. Nothing more can be done.
+			logUnexpectedStartError(err)
+			appsec.stopRC()
+			return
+		}
 	} else if err := appsec.start(); err != nil { // AppSec is specifically enabled
 		logUnexpectedStartError(err)
+		appsec.stopRC()
 		return
-	}
-	if appsec.rc != nil {
-		// TODO: register ASM_FEATURES callback
-		appsec.rc.Start()
 	}
 	setActiveAppSec(appsec)
 }
@@ -83,33 +87,32 @@ func setActiveAppSec(a *appsec) {
 	mu.Lock()
 	defer mu.Unlock()
 	if activeAppSec != nil {
-		if activeAppSec.rc != nil {
-			activeAppSec.rc.Stop()
-		}
+		activeAppSec.stopRC()
 		activeAppSec.stop()
 	}
 	activeAppSec = a
 }
 
 type appsec struct {
-	cfg           *Config
-	unregisterWAF dyngo.UnregisterFunc
-	limiter       *TokenTicker
-	rc            *remoteconfig.Client
-	started       bool
+	cfg       *Config
+	limiter   *TokenTicker
+	rc        *remoteconfig.Client
+	wafHandle *waf.Handle
+	started   bool
 }
 
 func newAppSec(cfg *Config) *appsec {
-	// Set RC capabilities and products for ASM
-	cfg.rc.Capabilities = append(cfg.rc.Capabilities, remoteconfig.ASMActivation)
-	cfg.rc.Products = append(cfg.rc.Products, rc.ProductASMFeatures)
-	rc, err := remoteconfig.NewClient(cfg.rc)
+	var client *remoteconfig.Client
+	var err error
+	if cfg.rc != nil {
+		client, err = remoteconfig.NewClient(*cfg.rc)
+	}
 	if err != nil {
-		log.Warn("Could not create remote configuration client. Feature will be disabled.")
+		log.Error("appsec: Remote config: disabled due to a client creation error: %v", err)
 	}
 	return &appsec{
 		cfg: cfg,
-		rc:  rc,
+		rc:  client,
 	}
 }
 
@@ -118,20 +121,29 @@ func (a *appsec) start() error {
 	a.limiter = NewTokenTicker(int64(a.cfg.traceRateLimit), int64(a.cfg.traceRateLimit))
 	a.limiter.Start()
 	// Register the WAF operation event listener
-	unregisterWAF, err := registerWAF(a.cfg.rules, a.cfg.wafTimeout, a.limiter, &a.cfg.obfuscator)
-	if err != nil {
+	if err := a.swapWAF(a.cfg.rulesManager.latest); err != nil {
 		return err
 	}
-	a.unregisterWAF = unregisterWAF
+	a.enableRCBlocking()
 	a.started = true
 	return nil
 }
 
 // Stop AppSec by unregistering the security protections.
 func (a *appsec) stop() {
-	if a.started {
-		a.started = false
-		a.unregisterWAF()
-		a.limiter.Stop()
+	if !a.started {
+		return
 	}
+	a.started = false
+	// Disable RC blocking first so that the following is guaranteed not to be concurrent anymore.
+	a.disableRCBlocking()
+
+	// Disable the currently applied instrumentation
+	dyngo.SwapRootOperation(nil)
+	if a.wafHandle != nil {
+		a.wafHandle.Close()
+	}
+	// TODO: block until no more requests are using dyngo operations
+
+	a.limiter.Stop()
 }

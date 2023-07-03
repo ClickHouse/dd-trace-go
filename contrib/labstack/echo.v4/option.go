@@ -8,16 +8,22 @@ package echo
 import (
 	"math"
 
-	"github.com/labstack/echo/v4"
-
 	"gopkg.in/DataDog/dd-trace-go.v1/internal/globalconfig"
+	"gopkg.in/DataDog/dd-trace-go.v1/internal/namingschema"
+	"gopkg.in/DataDog/dd-trace-go.v1/internal/normalizer"
+
+	"github.com/labstack/echo/v4"
 )
+
+const defaultServiceName = "echo"
 
 type config struct {
 	serviceName       string
 	analyticsRate     float64
 	noDebugStack      bool
 	ignoreRequestFunc IgnoreRequestFunc
+	isStatusError     func(statusCode int) bool
+	headerTags        func(string) (string, bool)
 }
 
 // Option represents an option that can be passed to Middleware.
@@ -27,11 +33,10 @@ type Option func(*config)
 type IgnoreRequestFunc func(c echo.Context) bool
 
 func defaults(cfg *config) {
-	cfg.serviceName = "echo"
-	if svc := globalconfig.ServiceName(); svc != "" {
-		cfg.serviceName = svc
-	}
+	cfg.serviceName = namingschema.NewDefaultServiceName(defaultServiceName).GetName()
 	cfg.analyticsRate = math.NaN()
+	cfg.isStatusError = isServerError
+	cfg.headerTags = globalconfig.HeaderTag
 }
 
 // WithServiceName sets the given service name for the system.
@@ -78,5 +83,35 @@ func NoDebugStack() Option {
 func WithIgnoreRequest(ignoreRequestFunc IgnoreRequestFunc) Option {
 	return func(cfg *config) {
 		cfg.ignoreRequestFunc = ignoreRequestFunc
+	}
+}
+
+// WithStatusCheck specifies a function fn which reports whether the passed
+// statusCode should be considered an error.
+func WithStatusCheck(fn func(statusCode int) bool) Option {
+	return func(cfg *config) {
+		cfg.isStatusError = fn
+	}
+}
+
+func isServerError(statusCode int) bool {
+	return statusCode >= 500 && statusCode < 600
+}
+
+// WithHeaderTags enables the integration to attach HTTP request headers as span tags.
+// Warning:
+// Using this feature can risk exposing sensitive data such as authorization tokens to Datadog.
+// Special headers can not be sub-selected. E.g., an entire Cookie header would be transmitted, without the ability to choose specific Cookies.
+func WithHeaderTags(headers []string) Option {
+	headerTagsMap := make(map[string]string)
+	for _, h := range headers {
+		header, tag := normalizer.NormalizeHeaderTag(h)
+		headerTagsMap[header] = tag
+	}
+	return func(cfg *config) {
+		cfg.headerTags = func(k string) (string, bool) {
+			tag, ok := headerTagsMap[k]
+			return tag, ok
+		}
 	}
 }
